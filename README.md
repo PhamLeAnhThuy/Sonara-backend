@@ -1,6 +1,6 @@
 # Sonara Backend
 
-Next.js backend for the Sonara app. It uses Postgres on Supabase for metadata and Supabase Storage for private audio delivery.
+Next.js backend for the Sonara app. It uses Postgres on Supabase for songs, artists, albums, playlists, history, and audio delivery.
 
 ## Environment
 
@@ -18,8 +18,9 @@ Run the SQL migrations in order:
 
 1. `supabase/migrations/001_init.sql`
 2. `supabase/migrations/002_feed_flags.sql`
+3. `supabase/migrations/004_simple_catalog.sql`
 
-Create a private storage bucket named `track-audio` if you want to manage it manually. The migration already tries to create it.
+Create a private storage bucket named `track-audio` for uploaded audio files.
 
 ## Data Model
 
@@ -37,17 +38,46 @@ The schema includes:
 - `follows`
 - `play_history`
 
-Recommended and trending tracks use `tracks.is_recommended`, `tracks.is_trending`, and `tracks.popularity_score`.
-Featured artists use `artists.is_featured`.
+Core audio fields:
+
+- `tracks.audio_storage_path`
+- `track_assets.storage_path`
 
 ## Audio Delivery Flow
 
-1. Upload audio to the private `track-audio` bucket.
-2. Store the path in `tracks.audio_storage_path`.
+1. Upload your audio file to the private `track-audio` bucket.
+2. Store the bucket path in `tracks.audio_storage_path`.
 3. Mobile app calls `GET /api/tracks/:id/play`.
-4. Backend validates the request and returns a short-lived signed URL.
+4. Backend returns metadata and, if available, a signed URL.
 
 For better streaming quality later, store HLS variants in `track_assets` and return a signed manifest instead of a single file.
+
+## Batch Insert Shape
+
+Recommended minimum fields for AI-generated import JSON:
+
+- `artist.name`
+- `artist.genre` if you want a category tag
+- `track.title`
+- `track.durationSeconds`
+- `track.audioStoragePath`
+
+Optional fields:
+
+- `artist.bio`
+- `artist.imageUrl`
+- `artist.popularity`
+- `album.title`
+- `album.coverUrl`
+- `album.releaseDate`
+- `track.trackNumber`
+- `track.artworkUrl`
+- `track.audioMimeType`
+- `track.explicit`
+- `track.popularityScore`
+- `assets[]`
+
+Lyrics can be provided as a single text block or as an array of lines. The backend stores a single block per track for now.
 
 ## Auth Flow
 
@@ -86,3 +116,34 @@ The app should treat the backend as the source of truth for:
 - playlist CRUD
 - track metadata
 - signed audio URLs
+
+## Batch Ingest
+
+Use `POST /api/admin/tracks/batch` with a JSON body like this:
+
+```json
+{
+	"dryRun": true,
+	"items": [
+		{
+			"artist": {
+				"name": "Artist Name",
+				"genre": "ambient, electronic"
+			},
+			"album": {
+				"title": "Album Name"
+			},
+			"track": {
+				"title": "Song Title",
+				"durationSeconds": 248,
+				"audioStoragePath": "Song Title.mp3",
+				"audioMimeType": "audio/mpeg"
+			},
+			"lyrics": [
+				"Full lyric block line 1\nFull lyric block line 2"
+			]
+			}
+		}
+	]
+}
+```
